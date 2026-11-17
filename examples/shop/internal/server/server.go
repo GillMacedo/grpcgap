@@ -44,7 +44,13 @@ func New(extra ...grpc.UnaryServerInterceptor) *grpc.Server {
 	}}
 	shopv1.RegisterOrdersServer(srv, orders{s: s})
 	shopv1.RegisterAdminServer(srv, admin{s: s})
-	healthpb.RegisterHealthServer(srv, health.NewServer())
+	healthSrv := health.NewServer()
+	// The health service answers Check and Watch from this map, so each name
+	// here is one a probe can ask about. The empty name is the server as a
+	// whole, which NewServer already marks serving.
+	healthSrv.SetServingStatus("shop.v1.Orders", healthpb.HealthCheckResponse_SERVING)
+	healthSrv.SetServingStatus("shop.v1.Admin", healthpb.HealthCheckResponse_SERVING)
+	healthpb.RegisterHealthServer(srv, healthSrv)
 	return srv
 }
 
