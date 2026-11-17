@@ -208,6 +208,10 @@ func writeText(w io.Writer, rep *report) {
 	if len(rep.NotChecked) > 0 || len(rep.Notes) > 0 {
 		fmt.Fprintln(w)
 		for _, u := range rep.NotChecked {
+			if u.Note != "" {
+				fmt.Fprintf(w, "NOTE %s\n", u.Note)
+				continue
+			}
 			fmt.Fprintf(w, "NOTE %s: grpc.WithDefaultServiceConfig(%s) is built at run time and isn't checked; pass the JSON with --config\n", u.Place, u.Expr)
 		}
 		for _, n := range rep.Notes {
@@ -216,9 +220,24 @@ func writeText(w io.Writer, rep *report) {
 	}
 	fmt.Fprintln(w)
 	errs, warns := counts(rep)
-	checked := fmt.Sprintf("%s and %s", plural(rep.MethodRefs, "method name", "method names"), plural(len(rep.Configs), "service config", "service configs"))
+	// Keep the old wording when nothing new is counted, so a run without
+	// SetServingStatus calls reads exactly as before.
+	var parts []string
+	if rep.MethodRefs > 0 || (rep.HealthNames == 0 && len(rep.Configs) == 0) {
+		parts = append(parts, plural(rep.MethodRefs, "method name", "method names"))
+	}
+	if rep.HealthNames > 0 {
+		parts = append(parts, plural(rep.HealthNames, "health service name", "health service names"))
+	}
+	if len(rep.Configs) > 0 || len(parts) == 0 {
+		parts = append(parts, plural(len(rep.Configs), "service config", "service configs"))
+	}
+	checked := parts[0]
+	if len(parts) > 1 {
+		checked = strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
+	}
 	switch {
-	case rep.MethodRefs == 0 && len(rep.Configs) == 0:
+	case rep.MethodRefs == 0 && rep.HealthNames == 0 && len(rep.Configs) == 0:
 		fmt.Fprintln(w, "Nothing checked: the code read has no gRPC method name strings and no service configs.")
 	case errs+warns == 0:
 		fmt.Fprintf(w, "No problems: %s checked against the linked services.\n", checked)

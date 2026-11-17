@@ -337,3 +337,101 @@ func TestMain_versionFlag(t *testing.T) {
 		t.Fatalf("--version: %+v", r)
 	}
 }
+
+// healthSet are the names a program passes to health.Server.SetServingStatus:
+// the right ones, the empty name for the server as a whole, and names that
+// no linked service has.
+var healthSet = []string{"", "shop.v1.Orders", "shop.v1.Admin", "grpc.health.v1.Health", "shop.v1.Order", "Orders", "shop.v1.Orderss"}
+
+// probeNames are the names a Kubernetes gRPC probe or grpc-health-probe asks
+// the health service about: the full names of the services the program serves.
+var probeNames = []string{"shop.v1.Orders", "shop.v1.Admin", "grpc.health.v1.Health"}
+
+// TestHealthNamesMatchGRPC puts every name in healthSet into a program's
+// SetServingStatus calls and checks the result against the real health
+// service. A name is right when a linked service has it, so the test sets
+// only the names grpcgap keeps, and Check must answer SERVING for every
+// service the program serves. Then it sets only the names grpcgap flags, and
+// Check must answer NOT_FOUND for each: that is the failure a typo causes, a
+// probe reporting a running service as down.
+func TestHealthNamesMatchGRPC(t *testing.T) {
+	dir := shopCopy(t)
+	lines := []string{
+		"package main",
+		"",
+		"import (",
+		"\t\"google.golang.org/grpc/health\"",
+		"\thealthpb \"google.golang.org/grpc/health/grpc_health_v1\"",
+		")",
+		"",
+		"func main() {",
+		"\th := health.NewServer()",
+	}
+	for _, name := range healthSet {
+		lines = append(lines, fmt.Sprintf("\th.SetServingStatus(%q, healthpb.HealthCheckResponse_SERVING)", name))
+	}
+	lines = append(lines, "\t_ = h", "}", "")
+	writeFile(t, filepath.Join(dir, "cmd", "healthnames", "main.go"), strings.Join(lines, "\n"))
+	writeFile(t, filepath.Join(dir, "cmd", "oraclehealth", "main.go"), readFile(t, filepath.Join(repoRoot, "tests", "testdata", "oracle", "health", "main.go")))
+
+	// cmd/api links the shop's services, so the names are checked against them.
+	// The shop's own server also sets status, so compare with a run without
+	// cmd/healthnames rather than with the calls written here.
+	base := runJSON(t, dir, "./cmd/api")
+	rep := runJSON(t, dir, "./cmd/healthnames", "./cmd/api")
+	var kept, dropped []string
+	for _, name := range healthSet {
+		ok := true
+		for _, f := range rep.Findings {
+			if !strings.HasPrefix(f.Place, "cmd/healthnames/") {
+				continue
+			}
+			if f.Code != "unknown-health-service" {
+				t.Errorf("finding %s %s in cmd/healthnames", f.Code, f.Place)
+				continue
+			}
+			var v string
+			json.Unmarshal([]byte(f.Value), &v)
+			if v == name {
+				ok = false
+			}
+		}
+		if ok {
+			kept = append(kept, name)
+		} else {
+			dropped = append(dropped, name)
+		}
+	}
+	if got := rep.HealthNames - base.HealthNames; got != len(healthSet) {
+		t.Errorf("checked %d health service names, want %d", got, len(healthSet))
+	}
+	wantDropped := []string{"shop.v1.Order", "Orders", "shop.v1.Orderss"}
+	if strings.Join(dropped, ",") != strings.Join(wantDropped, ",") {
+		t.Fatalf("flagged %q, want %q", dropped, wantDropped)
+	}
+
+	ask := func(set []string) map[string]string {
+		t.Helper()
+		args := append(append(append([]string{}, set...), "--"), probeNames...)
+		out, err := runProgram(t, dir, "./cmd/oraclehealth", args...)
+		if err != nil {
+			t.Fatalf("oracle: %v\n%s", err, out)
+		}
+		var answer map[string]string
+		if err := json.Unmarshal([]byte(out), &answer); err != nil {
+			t.Fatalf("oracle output %q: %v", out, err)
+		}
+		return answer
+	}
+	for name, got := range ask(kept) {
+		if got != "SERVING" {
+			t.Errorf("with only the names grpcgap keeps set, Check(%q) said %s, so a probe would report the service as down", name, got)
+		}
+	}
+	for name, got := range ask(dropped) {
+		// status.Code names it NotFound, as grpc-go does.
+		if got != "NotFound" {
+			t.Errorf("with only the names grpcgap flags set, Check(%q) said %s, want NotFound", name, got)
+		}
+	}
+}

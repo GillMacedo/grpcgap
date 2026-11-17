@@ -8,7 +8,8 @@ description: Checks the gRPC method name strings ("/package.Service/Method") and
 grpcgap runs `go list -deps -export` on the packages you give it (default `./...`), reads every `grpc.ServiceDesc` in the linked packages (generated `_grpc.pb.go` code, the health and reflection services), and checks the program's own code against them:
 
 - every string literal of the form `"/package.Service/Method"` or `"/package.Service/"`;
-- every service config passed to `grpc.WithDefaultServiceConfig`, and any string literal that is a service config JSON object.
+- every service config passed to `grpc.WithDefaultServiceConfig`, and any string literal that is a service config JSON object;
+- every name passed to `health.Server.SetServingStatus`, which is what a Kubernetes gRPC probe asks the health service about.
 
 It reads a service config the way grpc-go does: the same field names, matched without regard to case, the same handling of unknown fields, null and duplicates, the same retry policy and duration rules. It doesn't run the program. It needs Go 1.22 or newer, and the module's dependencies in the module cache or `vendor/` (the go command downloads them if it can).
 
@@ -23,7 +24,7 @@ Pass the build tags CI uses with `--tags`. Add `--config file.json` for each ser
 
 ## Read the exit code first
 
-- **0:** no errors. The last line says how many method names and service configs were checked. `Nothing checked` means the code has neither, which is not a clean bill of health for configs built at run time (see the `NOTE` lines).
+- **0:** no errors. The last line says how many method names, health service names (when there are any) and service configs were checked. `Nothing checked` means the code has neither, which is not a clean bill of health for configs built at run time (see the `NOTE` lines).
 - **1:** at least one ERROR (or WARNING with `--fail-on warning`).
 - **2:** nothing was reported. The message says why: the code doesn't build, the patterns matched nothing, no package links `google.golang.org/grpc`, or a `--config` file is empty, cut off or not a JSON object. Fix that and run again. Never describe exit 2 as a clean result.
 
@@ -31,6 +32,7 @@ Pass the build tags CI uses with `--tags`. Add `--config file.json` for each ser
 
 - `unknown-method` / `unknown-service` on a string: a check keyed by it never matches. In an allow-list that means the method gets the default treatment (for an admin-only list, any user can call it). The `fix:` line names the method's real service when another service has it, or a near spelling.
 - `unknown-method` / `unknown-service` on a methodConfig name: the retry policy, timeout or other settings of that entry never apply to any call.
+- `unknown-health-service`: a `SetServingStatus` name no linked service has. Nothing asks the health service about it, so a probe asking about the real service name gets NOT_FOUND and reports a running service as down. The empty name, which means the server as a whole, is fine and never reported.
 - `ignored-field`: grpc-go ignores the key. The common ones are a retry policy at the top level instead of inside `methodConfig[].retryPolicy`, and snake_case keys.
 - `unnamed-method-config` / `empty-name-list`: the entry applies to no method.
 - `invalid-service-config`: `grpc.NewClient` fails at startup with `grpc: the provided default service config is invalid`.

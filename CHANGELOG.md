@@ -5,6 +5,8 @@ All notable changes are documented here, in [Keep a Changelog](https://keepachan
 ## [Unreleased]
 
 ### Added
+- Health service names: every `SetServingStatus` call on a `*health.Server` made with `health.NewServer()` is read, and a name that no linked service has is reported as `unknown-health-service`, because nothing asks the health service about it and a probe gets NOT_FOUND for the service that is running.
+- `healthServiceNamesChecked` in the JSON report, and the health names in the text summary when there are any.
 - WARNING `throttling-without-retry`: a `retryThrottling` policy in a config whose `methodConfig` entries have no `retryPolicy`. gRPC consults the policy only when it retries a call, so such a setting never has any effect.
 
 ## [0.1.0] - 2026-11-17

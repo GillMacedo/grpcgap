@@ -72,7 +72,7 @@ grpcgap finds the same three problems without running anything. `--fail-on never
       internal/ordersclient/client.go:12: nothing
       internal/reportsclient/client.go:12: nothing
 
-    4 errors, 0 warnings: 5 method names and 3 service configs checked.
+    4 errors, 0 warnings: 5 method names, 2 health service names and 3 service configs checked.
 
 The billing program on its own is quiet, and the summary shows what its config does:
 
@@ -125,6 +125,7 @@ Pass `--tags` with the build tags your release build uses, `--config` for each s
   - every string literal of the form `"/package.Service/Method"` or `"/package.Service/"`;
   - the argument of every `grpc.WithDefaultServiceConfig` call, when it is a string literal, a constant, a variable or `:=` with a constant value, or a `+` of those;
   - every other string literal that is a JSON object with a service config key (`methodConfig`, `retryPolicy`, `retryThrottling`, `loadBalancingPolicy`, `loadBalancingConfig`, `healthCheckConfig`, in any case or with `_`).
+  - every `SetServingStatus` call on a `*health.Server` made with `health.NewServer()`, and the name it passes, which is what a Kubernetes gRPC probe asks the health service about.
 - **Each `--config` file**, which must be one JSON object.
 
 ## How it decides
@@ -135,6 +136,7 @@ A string counts as a gRPC method name when its service part has a package (`shop
 |---|---|---|
 | `unknown-method` | ERROR | The service exists but has no such method. A string: a check keyed by it never matches. A `methodConfig` name: its settings never apply through it |
 | `unknown-service` | ERROR | No linked package defines this service |
+| `unknown-health-service` | ERROR | A name passed to `health.Server.SetServingStatus` that no linked service has, so nothing asks about it and the service's real name answers `NOT_FOUND` |
 | `ignored-field` | ERROR | grpc-go ignores this key: a retry policy at the top level, snake_case, or a field in the wrong object |
 | `unnamed-method-config` | ERROR | A `methodConfig` entry with no `name`, which grpc-go skips |
 | `empty-name-list` | ERROR | A `methodConfig` entry with `"name": []`, which applies to no method |
@@ -168,6 +170,7 @@ It does the same for a `go.mod`, `vendor/modules.txt` or Go file (yours, generat
 - **Literals and constants only.** A method name built at run time (`"/" + svc + "/" + m`, `fmt.Sprintf`) isn't read, and a service config built at run time, such as one made with `json.Marshal`, is listed in a NOTE as not checked. Pass the JSON with `--config` to check it.
 - **Strings, not their use.** grpcgap doesn't know whether a string is compared with `info.FullMethod` or used for something else. A project that names non-gRPC endpoints in the gRPC format gets findings for them; mark those with `//grpcgap:ignore`.
 - **Bare method names aren't checked.** A list keyed by `"GetOrder"` alone can't be tied to a service.
+- **Health names only where the server is a `*health.Server`.** `SetServingStatus` is read when the receiver comes from `health.NewServer()` (or `health.DefaultServer`) in the same package. A wrapper type that embeds one, or a name computed from a variable, is listed in a NOTE instead.
 - **Load balancing isn't checked.** `loadBalancingPolicy` names aren't compared with the registered balancers (grpc-go falls back to `pick_first` for an unknown name without an error), and `loadBalancingConfig` is listed in a NOTE.
 - **Linked services only.** A client that calls another team's service through `ClientConn.Invoke` with a string, without linking its generated code, gets `unknown-service` for that name.
 - **Descriptors must be literals.** A `grpc.ServiceDesc` built at run time, as some proxies do, is listed in a NOTE, and names of its methods are reported as unknown.
@@ -177,6 +180,8 @@ It does the same for a `go.mod`, `vendor/modules.txt` or Go file (yours, generat
 ## FAQ
 
 **Why doesn't my grpc-go retry policy work?** The usual causes are a `retryPolicy` that isn't inside a `methodConfig` entry, a `methodConfig` entry without `name`, a `name` whose `service` doesn't match the full proto service name (`package.Service`), snake_case keys, and `grpc.WithDisableRetry()`. grpc-go reports none of these. grpcgap reports all of them and lists which methods each config really reaches.
+
+**Why does the Kubernetes gRPC probe report `NOT_FOUND` for a service that is running?** The probe asks the health service about a name, and `Check` answers `NOT_FOUND` unless `SetServingStatus` was called with exactly that name. The usual causes are a name without the proto package (`Orders` for `shop.v1.Orders`), the `.proto` service name instead of the full one, or a name that was renamed. grpcgap reports the call and names the near match.
 
 **What is a gRPC full method name?** `/package.Service/Method`, with the proto package, the service and the method as written in the `.proto` file. It's what `info.FullMethod` holds in an interceptor and what generated code passes to `Invoke`. Generated code also has constants for it, such as `shopv1.Orders_GetOrder_FullMethodName`; using those instead of string literals makes a rename a compile error.
 
