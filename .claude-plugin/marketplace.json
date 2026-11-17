@@ -1,0 +1,14 @@
+{
+  "name": "grpcgap-marketplace",
+  "description": "Marketplace for grpcgap, which finds gRPC method names and service configs in Go code that match nothing or that grpc-go silently ignores.",
+  "owner": {
+    "name": "Giulliano Macedo"
+  },
+  "plugins": [
+    {
+      "name": "grpcgap",
+      "source": "./plugin",
+      "description": "Find \"/pkg.Service/Method\" strings and grpc.WithDefaultServiceConfig settings in Go code that never apply: stale interceptor allow-lists, misnamed methodConfig entries, and retry policies grpc-go ignores."
+    }
+  ]
+}

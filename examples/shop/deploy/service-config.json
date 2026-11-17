@@ -1,0 +1,20 @@
+{
+  "methodConfig": [
+    {
+      "name": [{"service": "shop.v1.Orders"}],
+      "timeout": "3s",
+      "retry_policy": {
+        "max_attempts": 4,
+        "initial_backoff": "0.2s",
+        "max_backoff": "2s",
+        "backoff_multiplier": 2,
+        "retryable_status_codes": ["UNAVAILABLE"]
+      }
+    },
+    {
+      "name": [{"service": "shop.v1.Admin", "method": "ExportOrders"}],
+      "waitForReady": true,
+      "timeout": "60s"
+    }
+  ]
+}

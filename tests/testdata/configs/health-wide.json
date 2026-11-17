@@ -1,0 +1,1 @@
+{"methodConfig": [{"name": [{"service": "grpc.health.v1.Health"}], "timeout": "0.5s"}, {"name": [{"service": "shop.v1.Orders", "method": "WatchOrders"}], "waitForReady": true}]}

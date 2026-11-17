@@ -1,0 +1,1 @@
+{"methodConfig": [{"name": [{"service": "shop.v1.Orders"}], "timeout": "1s"}, {"name": [{"service": "shop.v1.Orders"}], "timeout": "2s"}]}

@@ -1,0 +1,1 @@
+{"loadBalancingPolicy": "round_robin", "methodConfig": [{"name": [{"service": "shop.v1.Orders", "method": "CreateOrder"}], "maxRequestMessageBytes": 1024, "maxResponseMessageBytes": 2048}]}
