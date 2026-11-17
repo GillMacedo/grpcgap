@@ -108,10 +108,11 @@ type jsonReport struct {
 		Name    string   `json:"name"`
 		Methods []string `json:"methods"`
 	} `json:"services"`
-	MethodRefs int           `json:"methodNamesChecked"`
-	Configs    []jsonConfig  `json:"serviceConfigs"`
-	Notes      []string      `json:"notes"`
-	Findings   []jsonFinding `json:"findings"`
+	MethodRefs  int           `json:"methodNamesChecked"`
+	HealthNames int           `json:"healthServiceNamesChecked"`
+	Configs     []jsonConfig  `json:"serviceConfigs"`
+	Notes       []string      `json:"notes"`
+	Findings    []jsonFinding `json:"findings"`
 }
 
 func runJSON(t *testing.T, dir string, args ...string) jsonReport {

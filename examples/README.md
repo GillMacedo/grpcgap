@@ -8,6 +8,7 @@
 | `internal/ordersclient` (used by `cmd/checkout`) | Service config with a bare `retryPolicy` and no `methodConfig` | No call is retried |
 | `internal/reportsclient` (used by `cmd/reports`) | Service config naming `shop.v1.Order` (typo) and `shop.v1.Orders/ExportOrders` (a method of `Admin`) | No call is retried |
 | `internal/billingclient` (used by `cmd/billing`) | Correct service config for `GetOrder`, and a correct method name in a logging filter | `GetOrder` is retried up to 3 times |
+| `internal/server` | Registers the health service and calls `SetServingStatus` for `shop.v1.Orders` and `shop.v1.Admin` | A probe asking about either name gets `SERVING` |
 
 `deploy/service-config.json` is a service config file, as it might be kept in a ConfigMap, that writes its retry policy in snake_case.
 
