@@ -37,13 +37,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	dir := fs.String("dir", ".", "module directory to run go list in")
 	tags := fs.String("tags", "", "build tags, passed to go list -tags")
-	format := fs.String("format", "text", "output format: text or json")
+	format := fs.String("format", "text", "output format: text, json or sarif")
 	failOn := fs.String("fail-on", "error", "exit 1 on errors (error), on errors and warnings (warning), or never")
 	var configs multiFlag
 	fs.Var(&configs, "config", "a service config JSON file to check too (repeatable)")
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: grpcgap [--dir DIR] [--tags TAGS] [--config FILE]... [--format text|json] [--fail-on error|warning|never] [packages]")
+		fmt.Fprintln(stderr, "usage: grpcgap [--dir DIR] [--tags TAGS] [--config FILE]... [--format text|json|sarif] [--fail-on error|warning|never] [packages]")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -56,8 +56,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "grpcgap", version)
 		return 0
 	}
-	if *format != "text" && *format != "json" {
-		fmt.Fprintf(stderr, "grpcgap: --format must be text or json, not %q\n", *format)
+	if *format != "text" && *format != "json" && *format != "sarif" {
+		fmt.Fprintf(stderr, "grpcgap: --format must be text, json or sarif, not %q\n", *format)
 		return 2
 	}
 	if *failOn != "error" && *failOn != "warning" && *failOn != "never" {
@@ -73,10 +73,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "grpcgap: can't trust the input, nothing was reported: %v\n", err)
 		return 2
 	}
-	if *format == "json" {
+	if *format == "json" || *format == "sarif" {
+		var output any = rep
+		if *format == "sarif" {
+			output = toSARIF(rep)
+		}
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(rep); err != nil {
+		if err := enc.Encode(output); err != nil {
 			fmt.Fprintf(stderr, "grpcgap: %v\n", err)
 			return 2
 		}

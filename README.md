@@ -106,6 +106,12 @@ Service configs that live outside Go code (a file, a ConfigMap, a DNS TXT record
 
 Add `--format json` for machine-readable output. `examples/README.md` says how the example was made.
 
+Use `--format sarif` for SARIF 2.1.0 output suitable for GitHub code scanning:
+
+    grpcgap --format sarif --fail-on never ./... > grpcgap.sarif
+
+Each finding includes its rule code, severity, message, source file and line. Healthy input produces an empty results array. Input refusals still exit 2 with no stdout. The file can be uploaded using [GitHub's SARIF upload workflow](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/uploading-a-sarif-file-to-github).
+
 ## In CI
 
 Run it after the build step, so a PR that renames an RPC or edits a service config fails when a name stops matching:

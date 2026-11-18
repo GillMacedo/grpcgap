@@ -86,6 +86,7 @@ func runTool(t *testing.T, dir string, args ...string) result {
 type jsonFinding struct {
 	Severity string   `json:"severity"`
 	Code     string   `json:"code"`
+	Message  string   `json:"message"`
 	Place    string   `json:"place"`
 	Value    string   `json:"value"`
 	Config   string   `json:"serviceConfig"`
