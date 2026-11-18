@@ -201,17 +201,19 @@ type cfgIssue struct {
 
 // svcModel is the result of reading one service config like gRPC does.
 type svcModel struct {
-	Valid    bool
-	Err      string
-	ErrOff   int
-	Methods  map[string]*methodCfg
-	Names    []nameEntry
-	Issues   []cfgIssue
-	LBConfig bool
-	Sets     bool     // sets anything gRPC uses
-	MCOffs   []int    // offset of each methodConfig entry
-	Other    []string // settings that aren't per method
-	MCs      []*methodCfg
+	Valid       bool
+	Err         string
+	ErrOff      int
+	Methods     map[string]*methodCfg
+	Names       []nameEntry
+	Issues      []cfgIssue
+	LBConfig    bool
+	ThrottleOff int      // offset of the retryThrottling key, when it is set
+	Retries     bool     // some methodConfig entry has a retry policy
+	Sets        bool     // sets anything gRPC uses
+	MCOffs      []int    // offset of each methodConfig entry
+	Other       []string // settings that aren't per method
+	MCs         []*methodCfg
 }
 
 // readServiceConfig reads a service config the way grpc-go's
@@ -249,6 +251,9 @@ func readServiceConfig(text string) *svcModel {
 	}
 	if t := rsc.RetryThrottling; t != nil {
 		m.Other = append(m.Other, fmt.Sprintf("retryThrottling maxTokens %v, tokenRatio %v", t.MaxTokens, t.TokenRatio))
+		if _, off := memberValue(tree, "RetryThrottling"); off > 0 {
+			m.ThrottleOff = off
+		}
 	}
 	if h := rsc.HealthCheckConfig; h != nil {
 		m.Other = append(m.Other, fmt.Sprintf("healthCheckConfig serviceName %q", h.ServiceName))
@@ -295,6 +300,7 @@ func readServiceConfig(text string) *svcModel {
 				}
 				sort.Strings(r.Codes)
 				cfg.Retry = r
+				m.Retries = true
 			}
 			nameNodes := []*jnode{}
 			if i < len(mcNodes) {
@@ -636,6 +642,22 @@ func memberArray(n *jnode, field string) []*jnode {
 		}
 	}
 	return out
+}
+
+// memberValue returns the value a key holds and the offset of the key, again
+// using the last member that decodes into the field, as encoding/json does.
+func memberValue(n *jnode, field string) (*jnode, int) {
+	if n == nil || n.kind != 'o' {
+		return nil, 0
+	}
+	var out *jnode
+	off := 0
+	for _, mem := range n.members {
+		if mem.key == field || strings.EqualFold(mem.key, field) {
+			out, off = mem.val, mem.off
+		}
+	}
+	return out, off
 }
 
 // lookup returns the method config gRPC uses for a full method name: an
