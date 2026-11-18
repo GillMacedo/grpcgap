@@ -19,7 +19,7 @@ Build it once, then run it in the module's directory:
     go build -o "${TMPDIR:-/tmp}/grpcgap" $(ls "${CLAUDE_PLUGIN_ROOT}"/scripts/*.go | grep -v _test.go)
     "${TMPDIR:-/tmp}/grpcgap" --dir . ./...
 
-Pass the build tags CI uses with `--tags`. Add `--config file.json` for each service config that lives outside Go code (a file, a ConfigMap, a DNS TXT record). Use `--format json` for machine-readable output.
+Pass the build tags CI uses with `--tags`. Add `--config file.json` for each service config that lives outside Go code (a file, a ConfigMap, a DNS TXT record), or use `--config DIR` to check the `.json` files directly in `DIR` in filename order. A directory with no `.json` files is an input error. Repeat `--config` to combine files and directories. Use `--format json` for machine-readable output.
 
 ## Read the exit code first
 

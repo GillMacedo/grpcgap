@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -114,8 +115,23 @@ func TestBadConfigFiles(t *testing.T) {
 	t.Run("missing", func(t *testing.T) {
 		refused(t, dir, "--config", filepath.Join(tmp, "does-not-exist.json"))
 	})
-	t.Run("directory", func(t *testing.T) {
-		refused(t, dir, "--config", tmp)
+	t.Run("directory without JSON", func(t *testing.T) {
+		configDir := t.TempDir()
+		writeFile(t, filepath.Join(configDir, "README.txt"), "no service configs here")
+		refused(t, dir, "--config", configDir)
+	})
+	t.Run("directory with bad JSON", func(t *testing.T) {
+		for _, bad := range []struct{ name, content string }{
+			{"empty", ""},
+			{"cut off", correct[:len(correct)/2]},
+		} {
+			t.Run(bad.name, func(t *testing.T) {
+				configDir := t.TempDir()
+				writeFile(t, filepath.Join(configDir, "a-good.json"), correct)
+				writeFile(t, filepath.Join(configDir, "z-bad.json"), bad.content)
+				refused(t, dir, "--config", configDir, "./cmd/billing")
+			})
+		}
 	})
 }
 
@@ -241,7 +257,28 @@ func TestBadSetups(t *testing.T) {
 // findings, on warnings only and on a healthy program.
 func TestExitCodes(t *testing.T) {
 	shop := filepath.Join(repoRoot, "examples", "shop")
-	capped := filepath.Join(repoRoot, "tests", "testdata", "configs", "capped-attempts.json")
+	fixtures := filepath.Join(repoRoot, "tests", "testdata", "configs")
+	capped := filepath.Join(fixtures, "capped-attempts.json")
+	correct := filepath.Join(fixtures, "correct.json")
+	configDir := t.TempDir()
+	first := filepath.Join(configDir, "a-correct.json")
+	last := filepath.Join(configDir, "z-capped.json")
+	writeFile(t, last, readFile(t, capped))
+	writeFile(t, first, readFile(t, correct))
+	writeFile(t, filepath.Join(configDir, "notes.txt"), "not JSON")
+	writeFile(t, filepath.Join(configDir, "nested.json", "bad.json"), "not JSON")
+
+	t.Run("directory order", func(t *testing.T) {
+		rep := runJSON(t, shop, "--config", configDir, "--config", correct, "./cmd/billing")
+		var places []string
+		for _, cfg := range rep.Configs {
+			places = append(places, cfg.Place)
+		}
+		if want := []string{filepath.ToSlash(first), filepath.ToSlash(last), filepath.ToSlash(correct)}; len(places) != 4 || !slices.Equal(places[1:], want) {
+			t.Errorf("config locations: got %v, want the billing config followed by %v", places, want)
+		}
+	})
+
 	cases := []struct {
 		name string
 		args []string
@@ -249,6 +286,7 @@ func TestExitCodes(t *testing.T) {
 	}{
 		{"errors", nil, map[string]int{"": 1, "error": 1, "warning": 1, "never": 0}},
 		{"warning only", []string{"--config", capped, "./cmd/billing"}, map[string]int{"": 0, "error": 0, "warning": 1, "never": 0}},
+		{"directory warning only", []string{"--config", configDir, "./cmd/billing"}, map[string]int{"": 0, "error": 0, "warning": 1, "never": 0}},
 		{"healthy", []string{"./cmd/billing"}, map[string]int{"": 0, "error": 0, "warning": 0, "never": 0}},
 	}
 	for _, c := range cases {
