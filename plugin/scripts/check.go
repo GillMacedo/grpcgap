@@ -524,29 +524,80 @@ func (c *checker) config(site *configSite, maxCalls bool) (configReport, []findi
 	return cr, fs, notes
 }
 
-// readConfigFiles reads the --config files, and refuses any that isn't
-// one complete JSON object with something in it.
+// readConfigFiles reads files supplied directly or through a --config directory.
 func readConfigFiles(paths []string) ([]*configSite, error) {
 	var sites []*configSite
 	for _, path := range paths {
-		data, err := os.ReadFile(path)
+		files, err := configPaths(path)
 		if err != nil {
-			return nil, refuse("can't read --config %s: %v", path, err)
+			return nil, err
 		}
-		if strings.TrimSpace(string(data)) == "" {
-			return nil, refuse("--config %s is empty", path)
+		for _, file := range files {
+			site, err := readConfigFile(file)
+			if err != nil {
+				return nil, err
+			}
+			sites = append(sites, site)
 		}
-		tree, err := parseJSON(data)
-		if err != nil {
-			return nil, refuse("--config %s isn't one complete JSON value (cut off, or not JSON): %v", path, err)
-		}
-		if tree.kind != 'o' {
-			return nil, refuse("--config %s holds a JSON %s, not a service config object", path, tree.kindName())
-		}
-		if len(tree.members) == 0 {
-			return nil, refuse("--config %s is an empty object, so there is nothing to check", path)
-		}
-		sites = append(sites, &configSite{Text: string(data), Place: filepath.ToSlash(path), Line: 1, File: path, Raw: true, IsFile: true})
 	}
 	return sites, nil
+}
+
+func configPaths(path string) ([]string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, refuse("can't read --config %s: %v", path, err)
+	}
+	if !info.IsDir() {
+		return []string{path}, nil
+	}
+
+	entries, err := os.ReadDir(path) // Sorted by filename.
+	if err != nil {
+		return nil, refuse("can't read --config %s: %v", path, err)
+	}
+	var files []string
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		file := filepath.Join(path, entry.Name())
+		info, err := os.Stat(file)
+		if err != nil {
+			return nil, refuse("can't read --config %s: %v", file, err)
+		}
+		if info.IsDir() {
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			return nil, refuse("--config %s is not a regular file", file)
+		}
+		files = append(files, file)
+	}
+	if len(files) == 0 {
+		return nil, refuse("--config directory %s contains no .json files", path)
+	}
+	return files, nil
+}
+
+// readConfigFile refuses anything other than one complete, non-empty JSON object.
+func readConfigFile(path string) (*configSite, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, refuse("can't read --config %s: %v", path, err)
+	}
+	if strings.TrimSpace(string(data)) == "" {
+		return nil, refuse("--config %s is empty", path)
+	}
+	tree, err := parseJSON(data)
+	if err != nil {
+		return nil, refuse("--config %s isn't one complete JSON value (cut off, or not JSON): %v", path, err)
+	}
+	if tree.kind != 'o' {
+		return nil, refuse("--config %s holds a JSON %s, not a service config object", path, tree.kindName())
+	}
+	if len(tree.members) == 0 {
+		return nil, refuse("--config %s is an empty object, so there is nothing to check", path)
+	}
+	return &configSite{Text: string(data), Place: filepath.ToSlash(path), Line: 1, File: path, Raw: true, IsFile: true}, nil
 }

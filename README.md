@@ -104,6 +104,8 @@ Service configs that live outside Go code (a file, a ConfigMap, a DNS TXT record
 
     1 error, 0 warnings: 1 method name and 2 service configs checked.
 
+Pass `--config DIR` to check a directory's `.json` files in filename order. Only files directly in `DIR` are checked. A directory with no `.json` files is an input error. Repeat `--config` to combine directories and individual files.
+
 Add `--format json` for machine-readable output. `examples/README.md` says how the example was made.
 
 ## In CI
@@ -113,7 +115,7 @@ Run it after the build step, so a PR that renames an RPC or edits a service conf
     - run: go build ./...
     - run: go run github.com/GillMacedo/grpcgap/plugin/scripts@v0.1.0 ./...
 
-Pass `--tags` with the build tags your release build uses, `--config` for each service config file, and `--fail-on warning` to fail on warnings too.
+Pass `--tags` with the build tags your release build uses, `--config` for each service config file or directory, and `--fail-on warning` to fail on warnings too.
 
 ## What it reads
 
