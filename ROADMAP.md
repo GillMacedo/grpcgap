@@ -10,7 +10,6 @@
 - Check health service names passed to `health.Server.SetServingStatus` and Kubernetes `grpc` probes.
 - Connect (`connectrpc.com/connect`) procedure names.
 - Method name strings in YAML and JSON policy files, with `--strings`.
-- SARIF output for GitHub code scanning.
 
 ## Not planned
 - Running the program or connecting to a server.

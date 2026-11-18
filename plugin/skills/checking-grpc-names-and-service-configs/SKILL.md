@@ -19,11 +19,11 @@ Build it once, then run it in the module's directory:
     go build -o "${TMPDIR:-/tmp}/grpcgap" $(ls "${CLAUDE_PLUGIN_ROOT}"/scripts/*.go | grep -v _test.go)
     "${TMPDIR:-/tmp}/grpcgap" --dir . ./...
 
-Pass the build tags CI uses with `--tags`. Add `--config file.json` for each service config that lives outside Go code (a file, a ConfigMap, a DNS TXT record). Use `--format json` for machine-readable output.
+Pass the build tags CI uses with `--tags`. Add `--config file.json` for each service config that lives outside Go code (a file, a ConfigMap, a DNS TXT record). Use `--format json` for the complete structured report, or `--format sarif` for SARIF 2.1.0 findings that can be uploaded to GitHub code scanning. `--fail-on never` lets CI save a report even when it contains findings.
 
 ## Read the exit code first
 
-- **0:** no errors. The last line says how many method names and service configs were checked. `Nothing checked` means the code has neither, which is not a clean bill of health for configs built at run time (see the `NOTE` lines).
+- **0:** no errors. In text format, the last line says how many method names and service configs were checked. `Nothing checked` means the code has neither, which is not a clean bill of health for configs built at run time (see the `NOTE` lines).
 - **1:** at least one ERROR (or WARNING with `--fail-on warning`).
 - **2:** nothing was reported. The message says why: the code doesn't build, the patterns matched nothing, no package links `google.golang.org/grpc`, or a `--config` file is empty, cut off or not a JSON object. Fix that and run again. Never describe exit 2 as a clean result.
 
