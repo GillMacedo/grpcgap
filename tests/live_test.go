@@ -82,8 +82,12 @@ var expectedCodes = map[string][]string{
 	"snake-case":                {"ignored-field"},
 	"snake-case-retry":          {"ignored-field"},
 	"string-attempts":           {"invalid-service-config"},
-	// grpc-go only checks retryThrottling when there is a methodConfig.
-	"throttling-bad":        nil,
+	// grpc-go only checks retryThrottling when there is a methodConfig, so
+	// maxTokens 0 is accepted here, but nothing retries, so the policy does
+	// nothing.
+	"throttling-bad":        {"throttling-without-retry"},
+	"throttling-good":       {"throttling-without-retry"},
+	"throttling-with-retry": nil,
 	"trailing-garbage":      {"invalid-service-config"},
 	"unnamed-invalid-retry": {"unnamed-method-config"},
 }
