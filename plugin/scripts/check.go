@@ -513,6 +513,14 @@ func (c *checker) config(site *configSite, maxCalls bool) (configReport, []findi
 		}
 	}
 	cr.Other = append(cr.Other, m.Other...)
+	// grpc-go applies retryThrottling only to calls it retries, so with no
+	// retry policy anywhere the policy can't do anything. Say so here rather
+	// than leave the config looking as if it throttles retries.
+	if m.ThrottleOff > 0 && !m.Retries {
+		add("WARNING", "throttling-without-retry", m.ThrottleOff, "retryThrottling",
+			"no methodConfig entry has a retryPolicy, and gRPC only consults retryThrottling when it retries a call, so this setting never has any effect",
+			`add a "retryPolicy" to the methodConfig entries that should retry, or remove retryThrottling`)
+	}
 	var notes []string
 	if m.LBConfig {
 		notes = append(notes, site.Place+": loadBalancingConfig isn't checked; gRPC rejects the whole service config if none of the policies it lists is registered in the program")
