@@ -14,6 +14,11 @@ import (
 
 const grpcPath = "google.golang.org/grpc"
 
+// healthPath is where health.Server, the server side of the standard health
+// service, lives. Code calls its SetServingStatus with the name of each
+// service it serves.
+const healthPath = "google.golang.org/grpc/health"
+
 // service is one gRPC service a linked package describes with a
 // grpc.ServiceDesc.
 type service struct {
@@ -56,11 +61,24 @@ type configSite struct {
 	parseNote string
 }
 
-// unchecked is a grpc.WithDefaultServiceConfig argument grpcgap can't
-// read without running the program.
+// unchecked is a grpc.WithDefaultServiceConfig or SetServingStatus argument
+// grpcgap can't read without running the program. Note, when set, is the
+// whole sentence to print instead of the default one.
 type unchecked struct {
 	Place string `json:"place"`
 	Expr  string `json:"expr"`
+	Note  string `json:"note,omitempty"`
+}
+
+// healthStatus is one health.Server.SetServingStatus call: the service
+// name it passes and where it is.
+type healthStatus struct {
+	Service string
+	Unknown bool // the argument isn't a constant, so the name is unknown
+	Place   string
+	Text    string // the argument as written, for the report
+	Pkg     string
+	litPos  token.Pos
 }
 
 type scanner struct {
@@ -70,6 +88,7 @@ type scanner struct {
 	services []*service
 	refs     []*reference
 	configs  []*configSite
+	health   []*healthStatus
 	skipped  []unchecked
 	notes    []string
 	maxCalls bool // grpc.WithMaxCallAttempts appears in the program's code
@@ -501,6 +520,109 @@ func (s *scanner) scanOwn(ps *pkgSrc) {
 			return true
 		})
 	}
+}
+
+// scanHealth reads the health.Server.SetServingStatus calls in one of the
+// program's own packages. The health service answers Check and Watch by
+// looking the name up in a map, so a name that no service uses makes the
+// Kubernetes gRPC probe, or a load balancer's health check, get NOT_FOUND
+// for a service that is running.
+func (s *scanner) scanHealth(ps *pkgSrc) {
+	for _, f := range ps.files {
+		if ast.IsGenerated(f) {
+			continue
+		}
+		// The calls are method values on a *health.Server, so there is no
+		// package name to match: the receiver's type is the only handle.
+		h := importName(f, healthPath)
+		ast.Inspect(f, func(n ast.Node) bool {
+			c, ok := n.(*ast.CallExpr)
+			if !ok || len(c.Args) == 0 {
+				return true
+			}
+			sel, ok := c.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "SetServingStatus" {
+				return true
+			}
+			if s.ignored(f, c.Pos()) {
+				return true
+			}
+			if !s.healthServer(h, sel.X) {
+				// A file that imports the health package and calls
+				// SetServingStatus on a receiver this file can't tie to a
+				// *health.Server (a parameter, a struct field, a wrapper type,
+				// or a package-level var declared elsewhere) is listed as not
+				// checked, or a typo there would read as all clear.
+				if h != "" {
+					s.notes = append(s.notes, s.place(c.Pos())+
+						": this SetServingStatus receiver isn't a *health.Server made with health.NewServer() in this file, so its name isn't checked")
+				}
+				return true
+			}
+			hs := &healthStatus{Place: s.place(c.Pos()), Text: exprString(s.fset, c.Args[0]), Pkg: ps.list.ImportPath, litPos: c.Args[0].Pos()}
+			if v, good := s.constValue(ps, f, c.Args[0], 0); good {
+				hs.Service = v
+			} else {
+				hs.Unknown = true
+			}
+			s.health = append(s.health, hs)
+			return true
+		})
+	}
+}
+
+// healthServer reports whether e is a health.Server, so a call on it is the
+// grpc-go method and not a method of the same name on something else.
+func (s *scanner) healthServer(h string, e ast.Expr) bool {
+	if h == "" {
+		return false
+	}
+	if isSel(e, h, "DefaultServer") {
+		return true
+	}
+	id, ok := e.(*ast.Ident)
+	if !ok || id.Obj == nil {
+		return false
+	}
+	var values []ast.Expr
+	switch d := id.Obj.Decl.(type) {
+	case *ast.ValueSpec:
+		values = d.Values
+	case *ast.AssignStmt:
+		if d.Tok == token.DEFINE {
+			for i, l := range d.Lhs {
+				if n, ok := l.(*ast.Ident); ok && n.Name == id.Name && i < len(d.Rhs) {
+					values = append(values, d.Rhs[i])
+				}
+			}
+		}
+	}
+	// health.NewServer() and &health.Server{} are the two forms the type is
+	// written in; the second has nil maps and panics on the first call, so a
+	// name checked on it is still worth reading.
+	for _, v := range values {
+		for _, n := range walkExpr(v) {
+			if call, ok := n.(*ast.CallExpr); ok && isSel(call.Fun, h, "NewServer") {
+				return true
+			}
+			if cl, ok := n.(*ast.CompositeLit); ok && isSel(cl.Type, h, "Server") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// walkExpr returns e and every expression inside it.
+func walkExpr(e ast.Expr) []ast.Expr {
+	var out []ast.Expr
+	ast.Inspect(e, func(n ast.Node) bool {
+		if x, ok := n.(ast.Expr); ok {
+			out = append(out, x)
+		}
+		return true
+	})
+	return out
 }
 
 // addDirect records the argument of a grpc.WithDefaultServiceConfig call.

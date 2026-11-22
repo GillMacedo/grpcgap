@@ -42,16 +42,17 @@ type serviceReport struct {
 }
 
 type report struct {
-	Tool       string          `json:"tool"`
-	Dir        string          `json:"dir"`
-	GRPC       string          `json:"grpcModule"`
-	Programs   []string        `json:"programs"`
-	Services   []serviceReport `json:"services"`
-	MethodRefs int             `json:"methodNamesChecked"`
-	Configs    []configReport  `json:"serviceConfigs"`
-	NotChecked []unchecked     `json:"notChecked"`
-	Notes      []string        `json:"notes"`
-	Findings   []finding       `json:"findings"`
+	Tool        string          `json:"tool"`
+	Dir         string          `json:"dir"`
+	GRPC        string          `json:"grpcModule"`
+	Programs    []string        `json:"programs"`
+	Services    []serviceReport `json:"services"`
+	MethodRefs  int             `json:"methodNamesChecked"`
+	HealthNames int             `json:"healthServiceNamesChecked"`
+	Configs     []configReport  `json:"serviceConfigs"`
+	NotChecked  []unchecked     `json:"notChecked"`
+	Notes       []string        `json:"notes"`
+	Findings    []finding       `json:"findings"`
 }
 
 // check reads the packages go list returned and the extra service config
@@ -127,6 +128,7 @@ func check(root string, list []*listPkg, configFiles []*configSite) (*report, er
 	sort.Slice(own, func(i, j int) bool { return own[i].ImportPath < own[j].ImportPath })
 	for _, p := range own {
 		s.scanOwn(s.pkgs[p.ImportPath])
+		s.scanHealth(s.pkgs[p.ImportPath])
 	}
 
 	known := map[string]*service{}
@@ -159,6 +161,18 @@ func check(root string, list []*listPkg, configFiles []*configSite) (*report, er
 		}
 	}
 
+	for _, hs := range s.health {
+		rep.HealthNames++
+		if hs.Unknown {
+			rep.NotChecked = append(rep.NotChecked, unchecked{Place: hs.Place, Expr: hs.Text,
+				Note: hs.Place + ": this SetServingStatus name is built at run time and isn't checked"})
+			continue
+		}
+		if f := c.healthName(hs); f != nil {
+			rep.Findings = append(rep.Findings, *f)
+		}
+	}
+
 	s.configs = append(s.configs, configFiles...)
 
 	for _, site := range s.configs {
@@ -171,7 +185,7 @@ func check(root string, list []*listPkg, configFiles []*configSite) (*report, er
 		rep.Findings = append(rep.Findings, fs...)
 		rep.Notes = append(rep.Notes, notes...)
 	}
-	rep.NotChecked = s.skipped
+	rep.NotChecked = append(s.skipped, rep.NotChecked...)
 	rep.Notes = append(rep.Notes, s.notes...)
 	sort.SliceStable(rep.Findings, func(i, j int) bool { return placeLess(rep.Findings[i].Place, rep.Findings[j].Place) })
 	return rep, nil
@@ -250,6 +264,57 @@ func (c *checker) isCandidate(svc, method string) bool {
 		}
 	}
 	return upperStart(simple) && (method == "" || upperStart(method))
+}
+
+// healthName checks one health.Server.SetServingStatus argument against the
+// services that are registered. The empty name means the server as a whole,
+// which NewServer registers as SERVING, so it is never a finding. A name no
+// linked service has is stored in the health server's map all the same, but
+// nothing ever asks for it: a probe names the service it checks, and Check
+// and Watch answer NOT_FOUND for a name that was never set. A typo here
+// therefore reports the real service as down while it is running.
+func (c *checker) healthName(hs *healthStatus) *finding {
+	if hs.Service == "" || has(c.names, hs.Service) {
+		return nil
+	}
+	f := &finding{
+		Severity: "ERROR",
+		Code:     "unknown-health-service",
+		Place:    hs.Place,
+		Value:    fmt.Sprintf("%q", hs.Service),
+		Programs: c.programsOf(hs.Pkg),
+		Message:  fmt.Sprintf("no linked package defines a gRPC service %s, so no client asks the health service about this name, and a probe that asks about the real service name gets NOT_FOUND while the service is running", hs.Service),
+	}
+	if near := closest(hs.Service, c.names); near != "" {
+		f.Fix = fmt.Sprintf("did you mean %q?", near)
+	} else {
+		f.Fix = c.healthFix(hs.Service)
+	}
+	return f
+}
+
+// healthFix suggests a service name for a SetServingStatus name nothing
+// defines. The common mistake is the name without its proto package
+// (`Orders` for `shop.v1.Orders`), which no edit distance finds, so the
+// services whose last part is the name come first.
+func (c *checker) healthFix(name string) string {
+	var same []string
+	for _, n := range c.names {
+		if _, simple := splitService(n); simple == name {
+			same = append(same, n)
+		}
+	}
+	switch len(same) {
+	case 1:
+		return fmt.Sprintf("did you mean %q?", same[0])
+	case 0:
+	default:
+		return fmt.Sprintf("did you mean one of %s?", strings.Join(same, ", "))
+	}
+	if len(c.names) == 0 {
+		return "no grpc.ServiceDesc was found in the linked packages; check that the generated code for this service is linked"
+	}
+	return "name the service as its generated code registers it, or leave it out of SetServingStatus"
 }
 
 // reference checks one method name string. It returns nil for strings
