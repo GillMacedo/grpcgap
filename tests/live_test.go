@@ -409,6 +409,21 @@ func TestHealthNamesMatchGRPC(t *testing.T) {
 	if strings.Join(dropped, ",") != strings.Join(wantDropped, ",") {
 		t.Fatalf("flagged %q, want %q", dropped, wantDropped)
 	}
+	// The name without its proto package is the mistake the FAQ leads with, so
+	// the fix has to name the full one, not just say the name is wrong.
+	for _, f := range rep.Findings {
+		if !strings.HasPrefix(f.Place, "cmd/healthnames/") {
+			continue
+		}
+		var v string
+		json.Unmarshal([]byte(f.Value), &v)
+		if v != "Orders" {
+			continue
+		}
+		if !strings.Contains(f.Fix, `"shop.v1.Orders"`) {
+			t.Errorf("the fix for %q doesn't name the full service: %s", v, f.Fix)
+		}
+	}
 
 	ask := func(set []string) map[string]string {
 		t.Helper()
@@ -432,6 +447,61 @@ func TestHealthNamesMatchGRPC(t *testing.T) {
 		// status.Code names it NotFound, as grpc-go does.
 		if got != "NotFound" {
 			t.Errorf("with only the names grpcgap flags set, Check(%q) said %s, want NotFound", name, got)
+		}
+	}
+}
+
+// TestHealthReceiverNotFollowed checks that a SetServingStatus call whose
+// receiver can't be tied to a *health.Server made in the same file is listed
+// in a NOTE rather than passed over, so a typo there doesn't read as all
+// clear. A parameter, a struct field and a package-level var declared in
+// another file are the three shapes the scanner can't follow.
+func TestHealthReceiverNotFollowed(t *testing.T) {
+	dir := shopCopy(t)
+	writeFile(t, filepath.Join(dir, "cmd", "unfollowed", "main.go"), strings.Join([]string{
+		"package main",
+		"",
+		"import (",
+		"\t\"google.golang.org/grpc/health\"",
+		"\thealthpb \"google.golang.org/grpc/health/grpc_health_v1\"",
+		")",
+		"",
+		"type wrapper struct{ h *health.Server }",
+		"",
+		"// set takes the server as a parameter, so the same file never sees its making.",
+		"func set(p *health.Server) {",
+		"\tp.SetServingStatus(\"Orderz\", healthpb.HealthCheckResponse_SERVING)",
+		"}",
+		"",
+		"func main() {",
+		"\tw := &wrapper{h: health.NewServer()}",
+		"\tw.h.SetServingStatus(\"Orderz\", healthpb.HealthCheckResponse_SERVING)",
+		"\tset(health.NewServer())",
+		"}",
+		"",
+	}, "\n"))
+
+	rep := runJSON(t, dir, "./cmd/unfollowed")
+	// The field and the parameter are not followed; `w.h` is a selector on a
+	// local variable, not an identifier holding a server.
+	want := 2
+	var got []string
+	for _, n := range rep.Notes {
+		if strings.Contains(n, "receiver isn't a *health.Server") {
+			got = append(got, n)
+		}
+	}
+	if len(got) != want {
+		t.Fatalf("got %d notes about an unfollowed receiver, want %d:\n%s", len(got), want, strings.Join(rep.Notes, "\n"))
+	}
+	for _, n := range got {
+		if !strings.Contains(n, "cmd/unfollowed/main.go:") {
+			t.Errorf("note doesn't name its place: %s", n)
+		}
+	}
+	for _, f := range rep.Findings {
+		if strings.Contains(f.Place, "cmd/unfollowed") {
+			t.Errorf("a name on an unfollowed receiver was reported as a finding: %s", f.Place)
 		}
 	}
 }

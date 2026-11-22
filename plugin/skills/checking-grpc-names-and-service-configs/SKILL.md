@@ -9,7 +9,7 @@ grpcgap runs `go list -deps -export` on the packages you give it (default `./...
 
 - every string literal of the form `"/package.Service/Method"` or `"/package.Service/"`;
 - every service config passed to `grpc.WithDefaultServiceConfig`, and any string literal that is a service config JSON object;
-- every name passed to `health.Server.SetServingStatus`, which is what a Kubernetes gRPC probe asks the health service about.
+- every name passed to `health.Server.SetServingStatus` on a server made in the same file, which is what a Kubernetes gRPC probe asks the health service about; a call whose receiver can't be followed is a `NOTE`, not a pass.
 
 It reads a service config the way grpc-go does: the same field names, matched without regard to case, the same handling of unknown fields, null and duplicates, the same retry policy and duration rules. It doesn't run the program. It needs Go 1.22 or newer, and the module's dependencies in the module cache or `vendor/` (the go command downloads them if it can).
 

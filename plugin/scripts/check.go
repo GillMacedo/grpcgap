@@ -288,9 +288,33 @@ func (c *checker) healthName(hs *healthStatus) *finding {
 	if near := closest(hs.Service, c.names); near != "" {
 		f.Fix = fmt.Sprintf("did you mean %q?", near)
 	} else {
-		f.Fix = "name the service as its generated code registers it, or leave it out of SetServingStatus"
+		f.Fix = c.healthFix(hs.Service)
 	}
 	return f
+}
+
+// healthFix suggests a service name for a SetServingStatus name nothing
+// defines. The common mistake is the name without its proto package
+// (`Orders` for `shop.v1.Orders`), which no edit distance finds, so the
+// services whose last part is the name come first.
+func (c *checker) healthFix(name string) string {
+	var same []string
+	for _, n := range c.names {
+		if _, simple := splitService(n); simple == name {
+			same = append(same, n)
+		}
+	}
+	switch len(same) {
+	case 1:
+		return fmt.Sprintf("did you mean %q?", same[0])
+	case 0:
+	default:
+		return fmt.Sprintf("did you mean one of %s?", strings.Join(same, ", "))
+	}
+	if len(c.names) == 0 {
+		return "no grpc.ServiceDesc was found in the linked packages; check that the generated code for this service is linked"
+	}
+	return "name the service as its generated code registers it, or leave it out of SetServingStatus"
 }
 
 // reference checks one method name string. It returns nil for strings

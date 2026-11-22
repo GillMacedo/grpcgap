@@ -89,6 +89,7 @@ type jsonFinding struct {
 	Place    string   `json:"place"`
 	Value    string   `json:"value"`
 	Config   string   `json:"serviceConfig"`
+	Fix      string   `json:"fix"`
 	Programs []string `json:"programs"`
 }
 

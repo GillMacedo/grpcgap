@@ -544,10 +544,19 @@ func (s *scanner) scanHealth(ps *pkgSrc) {
 			if !ok || sel.Sel.Name != "SetServingStatus" {
 				return true
 			}
-			if !s.healthServer(h, sel.X) {
+			if s.ignored(f, c.Pos()) {
 				return true
 			}
-			if s.ignored(f, c.Pos()) {
+			if !s.healthServer(h, sel.X) {
+				// A file that imports the health package and calls
+				// SetServingStatus on a receiver this file can't tie to a
+				// *health.Server (a parameter, a struct field, a wrapper type,
+				// or a package-level var declared elsewhere) is listed as not
+				// checked, or a typo there would read as all clear.
+				if h != "" {
+					s.notes = append(s.notes, s.place(c.Pos())+
+						": this SetServingStatus receiver isn't a *health.Server made with health.NewServer() in this file, so its name isn't checked")
+				}
 				return true
 			}
 			hs := &healthStatus{Place: s.place(c.Pos()), Text: exprString(s.fset, c.Args[0]), Pkg: ps.list.ImportPath, litPos: c.Args[0].Pos()}
