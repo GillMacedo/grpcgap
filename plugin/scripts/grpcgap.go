@@ -40,10 +40,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	format := fs.String("format", "text", "output format: text, json or sarif")
 	failOn := fs.String("fail-on", "error", "exit 1 on errors (error), on errors and warnings (warning), or never")
 	var configs multiFlag
-	fs.Var(&configs, "config", "a service config JSON file to check too (repeatable)")
+	fs.Var(&configs, "config", "a service config JSON file or a directory of .json files (repeatable)")
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: grpcgap [--dir DIR] [--tags TAGS] [--config FILE]... [--format text|json|sarif] [--fail-on error|warning|never] [packages]")
+		fmt.Fprintln(stderr, "usage: grpcgap [--dir DIR] [--tags TAGS] [--config FILE|DIR]... [--format text|json|sarif] [--fail-on error|warning|never] [packages]")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {

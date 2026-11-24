@@ -19,7 +19,7 @@ Build it once, then run it in the module's directory:
     go build -o "${TMPDIR:-/tmp}/grpcgap" $(ls "${CLAUDE_PLUGIN_ROOT}"/scripts/*.go | grep -v _test.go)
     "${TMPDIR:-/tmp}/grpcgap" --dir . ./...
 
-Pass the build tags CI uses with `--tags`. Add `--config file.json` for each service config that lives outside Go code (a file, a ConfigMap, a DNS TXT record). Use `--format json` for the complete structured report, or `--format sarif` for SARIF 2.1.0 findings that can be uploaded to GitHub code scanning. `--fail-on never` lets CI save a report even when it contains findings.
+Pass the build tags CI uses with `--tags`. Add `--config file.json` for each service config that lives outside Go code (a file, a ConfigMap, a DNS TXT record), or use `--config DIR` to check the `.json` files directly in `DIR` in filename order. A directory with no `.json` files is an input error. Repeat `--config` to combine files and directories. Use `--format json` for the complete structured report, or `--format sarif` for SARIF 2.1.0 findings that can be uploaded to GitHub code scanning. `--fail-on never` lets CI save a report even when it contains findings.
 
 ## Read the exit code first
 
@@ -34,7 +34,7 @@ Pass the build tags CI uses with `--tags`. Add `--config file.json` for each ser
 - `ignored-field`: grpc-go ignores the key. The common ones are a retry policy at the top level instead of inside `methodConfig[].retryPolicy`, and snake_case keys.
 - `unnamed-method-config` / `empty-name-list`: the entry applies to no method.
 - `invalid-service-config`: `grpc.NewClient` fails at startup with `grpc: the provided default service config is invalid`.
-- WARNING `retry-capped`, `retry-disabled`, `duplicate-field`, `empty-service-config`: the config does less than it says.
+- WARNING `retry-capped`, `retry-disabled`, `duplicate-field`, `empty-service-config`, `throttling-without-retry`: the config does less than it says. (`throttling-without-retry` means a `retryThrottling` policy with no `retryPolicy` to gate, so it never applies.)
 
 "What each service config applies" lists, for each config, the methods it really reaches and with what settings. Use it to answer "does my retry policy apply to X?".
 

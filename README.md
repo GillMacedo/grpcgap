@@ -104,6 +104,8 @@ Service configs that live outside Go code (a file, a ConfigMap, a DNS TXT record
 
     1 error, 0 warnings: 1 method name and 2 service configs checked.
 
+Pass `--config DIR` to check a directory's `.json` files in filename order. Only files directly in `DIR` are checked. A directory with no `.json` files is an input error. Repeat `--config` to combine directories and individual files.
+
 Add `--format json` for machine-readable output. `examples/README.md` says how the example was made.
 
 Use `--format sarif` for SARIF 2.1.0 output suitable for GitHub code scanning:
@@ -119,7 +121,7 @@ Run it after the build step, so a PR that renames an RPC or edits a service conf
     - run: go build ./...
     - run: go run github.com/GillMacedo/grpcgap/plugin/scripts@v0.1.0 ./...
 
-Pass `--tags` with the build tags your release build uses, `--config` for each service config file, and `--fail-on warning` to fail on warnings too.
+Pass `--tags` with the build tags your release build uses, `--config` for each service config file or directory, and `--fail-on warning` to fail on warnings too.
 
 ## What it reads
 
@@ -144,6 +146,7 @@ A string counts as a gRPC method name when its service part has a package (`shop
 | `empty-name-list` | ERROR | A `methodConfig` entry with `"name": []`, which applies to no method |
 | `invalid-service-config` | ERROR | grpc-go rejects the config. Passed to `grpc.WithDefaultServiceConfig`, `grpc.NewClient` fails with `grpc: the provided default service config is invalid` |
 | `retry-capped` | WARNING | `maxAttempts` above 5, which grpc-go lowers to 5 unless the client sets `grpc.WithMaxCallAttempts` |
+| `throttling-without-retry` | WARNING | `retryThrottling` set in a config whose `methodConfig` entries have no `retryPolicy`; gRPC consults the throttling policy only when it retries, so it never has an effect |
 | `retry-disabled` | WARNING | A retry policy in the same dial options as `grpc.WithDisableRetry()` |
 | `duplicate-field` | WARNING | The same field twice; `encoding/json` applies both in order |
 | `empty-service-config` | WARNING | A valid config that sets nothing |
@@ -191,7 +194,7 @@ It does the same for a `go.mod`, `vendor/modules.txt` or Go file (yours, generat
 
 ## Tested on
 
-- **The real grpc-go at run time.** `tests/live_test.go` builds two oracle programs against the vendored grpc-go v1.70.0. One gets 42 service configs in `tests/testdata/configs`, and the test checks that grpcgap agrees with `grpc.NewClient` on which ones are rejected and with `ClientConn.GetMethodConfig` on the settings every method gets; this found one rule the first version got wrong (retry throttling is only checked when there is a `methodConfig`). The other calls 15 method names on a real server and records which ones reach its interceptors; grpcgap must flag exactly the gRPC-looking ones that don't, and leave 6 path-like strings alone. `TestDemo` runs `cmd/demo` and checks that grpcgap flags exactly the clients that didn't retry and the admin entry that let a user through.
+- **The real grpc-go at run time.** `tests/live_test.go` builds two oracle programs against the vendored grpc-go v1.70.0. One gets 43 service configs in `tests/testdata/configs`, and the test checks that grpcgap agrees with `grpc.NewClient` on which ones are rejected and with `ClientConn.GetMethodConfig` on the settings every method gets; this found one rule the first version got wrong (retry throttling is only checked when there is a `methodConfig`). The other calls 15 method names on a real server and records which ones reach its interceptors; grpcgap must flag exactly the gRPC-looking ones that don't, and leave 6 path-like strings alone. `TestDemo` runs `cmd/demo` and checks that grpcgap flags exactly the clients that didn't retry and the admin entry that let a user through.
 - **Real projects, by hand,** with Go 1.27.3 on linux/arm64:
   - smartcontractkit/chainlink-common `pkg/chipingress` at 137d133, the commit before PR 2373: reported the five retry policy fields at the top level of the service config, at `client.go:104`. At the fix, 83eb230, no finding, and a NOTE that the config is built at run time.
   - temporalio/temporal at a1e0052: 213 method names checked, 10 errors. One is a quota entry for `SetCurrentDeploymentVersion`, which the linked WorkflowService doesn't have; the line is marked `[cleanup-wv-pre-release]`. The other nine are names Temporal uses on purpose for its Nexus and OpenAPI HTTP endpoints and long-poll variants, and its comments say they aren't gRPC methods. Those need `//grpcgap:ignore`.

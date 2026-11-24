@@ -2,7 +2,7 @@
 
 ## 0.1.0 (this release)
 - Check `"/package.Service/Method"` strings in a Go program's own code against the services it links.
-- Read `grpc.WithDefaultServiceConfig` arguments, service config string literals and `--config` files the way grpc-go does, and report names that match nothing, fields it ignores, configs it rejects, and retry policies it caps or disables.
+- Read `grpc.WithDefaultServiceConfig` arguments, service config string literals and `--config` files the way grpc-go does, and report names that match nothing, fields it ignores, configs it rejects, retry policies it caps or disables, and a `retryThrottling` policy nothing retries through.
 
 ## Next
 - Check `loadBalancingPolicy` and `loadBalancingConfig` names against the balancers the program registers.
