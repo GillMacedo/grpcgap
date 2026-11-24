@@ -38,6 +38,7 @@ type reference struct {
 	Method  string
 	Place   string
 	Pkg     string
+	File    string
 }
 
 // configSite is a service config found in the program's own code.
@@ -479,7 +480,7 @@ func (s *scanner) scanOwn(ps *pkgSrc) {
 			}
 			if m := fullMethodRe.FindStringSubmatch(v); m != nil {
 				if !s.ignored(f, lit.Pos()) {
-					s.refs = append(s.refs, &reference{Value: v, Service: m[1], Method: m[2], Place: s.place(lit.Pos()), Pkg: ps.list.ImportPath})
+					s.refs = append(s.refs, &reference{Value: v, Service: m[1], Method: m[2], Place: s.place(lit.Pos()), Pkg: ps.list.ImportPath, File: s.fset.Position(lit.Pos()).Filename})
 				}
 				return true
 			}

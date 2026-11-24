@@ -76,7 +76,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if *format == "json" || *format == "sarif" {
 		var output any = rep
 		if *format == "sarif" {
-			output = toSARIF(rep)
+			sarif, err := toSARIF(rep)
+			if err != nil {
+				fmt.Fprintf(stderr, "grpcgap: %v\n", err)
+				return 2
+			}
+			output = sarif
 		}
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")

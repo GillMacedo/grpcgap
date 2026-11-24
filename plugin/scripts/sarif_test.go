@@ -18,9 +18,12 @@ func TestSARIFLocations(t *testing.T) {
 		{"config.json", "config.json", 0},
 	} {
 		t.Run(tc.place, func(t *testing.T) {
-			log := toSARIF(&report{Findings: []finding{{
+			log, err := toSARIF(&report{Findings: []finding{{
 				Severity: "WARNING", Code: "retry-capped", Place: tc.place, Message: "capped",
 			}}})
+			if err != nil {
+				t.Fatal(err)
+			}
 			result := log.Runs[0].Results[0]
 			location := result.Locations[0].PhysicalLocation
 			if result.Level != "warning" || location.ArtifactLocation.URI != tc.uri {

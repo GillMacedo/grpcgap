@@ -19,6 +19,8 @@ type finding struct {
 	Message  string   `json:"message"`
 	Fix      string   `json:"fix,omitempty"`
 	Programs []string `json:"programs"`
+	// Keep the filesystem origin separately from the display-relative Place.
+	sourceFile string
 }
 
 type applied struct {
@@ -262,7 +264,7 @@ func (c *checker) reference(ref *reference) *finding {
 	if !ok && !c.isCandidate(ref.Service, ref.Method) {
 		return nil
 	}
-	f := &finding{Severity: "ERROR", Place: ref.Place, Value: fmt.Sprintf("%q", ref.Value), Programs: c.programsOf(ref.Pkg)}
+	f := &finding{Severity: "ERROR", Place: ref.Place, Value: fmt.Sprintf("%q", ref.Value), Programs: c.programsOf(ref.Pkg), sourceFile: ref.File}
 	what := "this string never equals the method name gRPC gives interceptors, stats handlers and Invoke, so a check or lookup keyed by it never matches"
 	if ref.Method == "" {
 		what = "no method name starts with this prefix, so a check that compares method names with it never matches"
@@ -450,7 +452,7 @@ func (c *checker) config(site *configSite, maxCalls bool) (configReport, []findi
 	}
 	var fs []finding
 	add := func(sev, code string, off int, value, msg, fix string) {
-		fs = append(fs, finding{Severity: sev, Code: code, Place: site.lineAt(off), Value: value, Config: site.Place, Message: msg, Fix: fix, Programs: progs})
+		fs = append(fs, finding{Severity: sev, Code: code, Place: site.lineAt(off), Value: value, Config: site.Place, Message: msg, Fix: fix, Programs: progs, sourceFile: site.File})
 	}
 	for _, is := range m.Issues {
 		add(is.Severity, is.Code, is.Off, is.Value, is.Message, is.Fix)

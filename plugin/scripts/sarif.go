@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -45,7 +47,11 @@ type sarifRegion struct {
 	StartLine int `json:"startLine"`
 }
 
-func toSARIF(rep *report) sarifLog {
+func toSARIF(rep *report) (sarifLog, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return sarifLog{}, fmt.Errorf("resolve SARIF working directory: %w", err)
+	}
 	log := sarifLog{
 		Schema:  "https://docs.oasis-open.org/sarif/sarif/v2.1.0/os/schemas/sarif-schema-2.1.0.json",
 		Version: "2.1.0",
@@ -62,6 +68,14 @@ func toSARIF(rep *report) sarifLog {
 		}
 		result.Message.Text = f.Message
 		file, line := splitPlace(f.Place)
+		if f.sourceFile != "" {
+			file = f.sourceFile
+		}
+		if filepath.IsAbs(file) {
+			if relative, err := filepath.Rel(cwd, file); err == nil {
+				file = relative
+			}
+		}
 		location := sarifLocation{}
 		location.PhysicalLocation.ArtifactLocation.URI = sarifFileURI(file)
 		if line > 0 {
@@ -70,7 +84,7 @@ func toSARIF(rep *report) sarifLog {
 		result.Locations = []sarifLocation{location}
 		run.Results = append(run.Results, result)
 	}
-	return log
+	return log, nil
 }
 
 // Artifact locations are URI references, so filenames containing #, ?, or spaces
